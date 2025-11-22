@@ -1,0 +1,39 @@
+services:
+  scramjet:
+    # builds the Dockerfile in the current directory
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    
+    container_name: scramjet-wisp
+    restart: unless-stopped
+    
+    # SECURITY HARDENING (The "Safety" requirement)
+    # Drops all Linux capabilities (like changing system time, raw sockets, etc)
+    # and prevents the container from gaining new privileges.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    
+    # RESOURCE MANAGEMENT (The "Efficiency" requirement)
+    # Ensures this container doesn't eat your whole VPS if under attack.
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
+    
+    environment:
+      # Optional: Set a bandwidth limit (in KB/s) via env var if you modify the CMD
+      - LOG_LEVEL=info
+    
+    ports:
+      - "8080:8080"
+
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
