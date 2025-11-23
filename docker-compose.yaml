@@ -16,8 +16,6 @@ services:
           memory: 1024M
     environment:
       - LOG_LEVEL=info
-    
-
     networks:
       - coolify
 
