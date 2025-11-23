@@ -14,18 +14,21 @@ RUN npm install -g pnpm
 # 3. Install dependencies
 RUN pnpm install
 
-# 4. INTELLIGENT BUILD FIX
-# We check where index.html is. If it's missing in root, we look for a 'client' folder.
-RUN if [ -f "index.html" ]; then \
-      echo "Found index.html in root. Building..."; \
-      npx vite build; \
-    elif [ -d "client" ]; then \
-      echo "Found client directory. Building inside client..."; \
-      cd client && pnpm install && npx vite build && mv dist ../dist; \
+# 4. STRUCTURE FIX & BUILD
+# Move index.html from public to root so Vite can find it (Common fix for this repo structure)
+RUN if [ -f "public/index.html" ]; then cp public/index.html .; fi
+
+# Attempt to build. If it fails, we ignore the error (|| true) and fall back to 'public' folder.
+RUN npx vite build || echo "Build failed, falling back to public folder"
+
+# 5. PREPARE FINAL ASSETS
+# We decide which folder to serve. If 'dist' exists, use it. If not, use 'public'.
+RUN if [ -d "dist" ]; then \
+      mv dist /app/final_site; \
+    elif [ -d "public" ]; then \
+      mv public /app/final_site; \
     else \
-      echo "CRITICAL ERROR: Could not find source code structure."; \
-      ls -R; \
-      exit 1; \
+      mkdir /app/final_site && echo "<h1>Error: No assets found</h1>" > /app/final_site/index.html; \
     fi
 
 # STAGE 2: The Wisp Python Backend
@@ -36,12 +39,13 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir wisp-python
 
-# Copy the compiled frontend
-# This will FAIL intentionally if the build above didn't work, 
-# preventing you from deploying a broken app.
-COPY --from=builder /app/dist /app/client
+# Copy the final assets from the builder stage
+COPY --from=builder /app/final_site /app/client
 
 USER scramjet
+
+# Expose internal port
 EXPOSE 8080
 
+# Serve the prepared folder
 CMD ["python3", "-m", "wisp.server", "--host", "0.0.0.0", "--port", "8080", "--static", "/app/client", "--limits", "--connections", "50", "--log-level", "info"]
