@@ -1,7 +1,7 @@
 # STAGE 1: Build the Scramjet Frontend
 FROM node:20-alpine AS builder
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git sed
 
 WORKDIR /app
 
@@ -14,15 +14,20 @@ RUN npm install -g pnpm
 # 3. Install dependencies
 RUN pnpm install
 
-# 4. STRUCTURE FIX & BUILD
-# Move index.html from public to root so Vite can find it (Common fix for this repo structure)
+# 4. CONFIGURATION PATCH (The Fix for 404s)
+# We search for where the wisp url is defined and force it to root.
+# Usually in public/index.js or public/uv.config.js (or similar).
+# We'll try to patch the most likely suspects.
+RUN find public -type f -name "*.js" -print0 | xargs -0 sed -i 's|/wisp/|/|g' || true
+RUN find public -type f -name "*.js" -print0 | xargs -0 sed -i 's|"/wisp/"|"/"|g' || true
+
+# 5. STRUCTURE FIX & BUILD
 RUN if [ -f "public/index.html" ]; then cp public/index.html .; fi
 
-# Attempt to build. If it fails, we ignore the error (|| true) and fall back to 'public' folder.
+# Build (ignoring errors to fallback to public if needed)
 RUN npx vite build || echo "Build failed, falling back to public folder"
 
-# 5. PREPARE FINAL ASSETS
-# We decide which folder to serve. If 'dist' exists, use it. If not, use 'public'.
+# 6. PREPARE FINAL ASSETS
 RUN if [ -d "dist" ]; then \
       mv dist /app/final_site; \
     elif [ -d "public" ]; then \
@@ -39,13 +44,11 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir wisp-python
 
-# Copy the final assets from the builder stage
+# Copy assets
 COPY --from=builder /app/final_site /app/client
 
 USER scramjet
-
-# Expose internal port
 EXPOSE 8080
 
-# Serve the prepared folder
+# Serve
 CMD ["python3", "-m", "wisp.server", "--host", "0.0.0.0", "--port", "8080", "--static", "/app/client", "--limits", "--connections", "50", "--log-level", "info"]
